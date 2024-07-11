@@ -1,6 +1,7 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const port = process.env.PORT || 5000;
 
@@ -12,6 +13,9 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 app.use(express.json());
+
+// pass
+// khaled22
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.n0w8anz.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -25,11 +29,39 @@ const client = new MongoClient(uri, {
   },
 });
 
+// const verify --- JWT
+const verifyJWT = (req, res, next) => {
+  const authorization = req.headers.authorization;
+  if (!authorization) {
+    return res.status(401).send({ err: true, massage: "Unauthorize Access" });
+  }
+  const token = authorization.split(" ")[1];
+  console.log("token author", token);
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).send({ err: true, massage: "Unauthorize Access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
+
+// mitul123
+
 async function run() {
   try {
     const usersCollection = client.db("aircncDb").collection("users");
     const roomsCollection = client.db("aircncDb").collection("rooms");
     const bookingsCollection = client.db("aircncDb").collection("bookings");
+
+    app.post("/jwt", (req, res) => {
+      const email = req.body;
+      const token = jwt.sign(email, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "2d",
+      });
+      // console.log("jwt email token", { token });
+      res.send({ token });
+    });
 
     // Save user email and role in DB
     app.put("/users/:email", async (req, res) => {
@@ -41,7 +73,7 @@ async function run() {
         $set: user,
       };
       const result = await usersCollection.updateOne(query, updateDoc, options);
-      console.log(result);
+      // console.log(result);
       res.send(result);
     });
 
@@ -50,7 +82,7 @@ async function run() {
       const email = req.params.email;
       const query = { email: email };
       const result = await usersCollection.findOne(query);
-      console.log(result);
+      // console.log(result);
       res.send(result);
     });
 
@@ -68,13 +100,19 @@ async function run() {
       res.send(result);
     });
 
-    // Get a single room
-    app.get("/rooms/:email", async (req, res) => {
+    // Get all room for host
+    app.get("/rooms/:email", verifyJWT, async (req, res) => {
+      const decodedEmail = req.decoded.email;
+      console.log("decodedEmail =>>>>>> ", decodedEmail);
+
       const email = req.params.email;
+      if (email !== decodedEmail) {
+        req.status(403).send({ err: true, massage: "Forbidden Access" });
+      }
       const query = { "host.email": email };
       const result = await roomsCollection.find(query).toArray();
 
-      console.log(result);
+      // console.log(result);
       res.send(result);
     });
 
@@ -83,14 +121,14 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await roomsCollection.findOne(query);
-      console.log(result);
+      // console.log(result);
       res.send(result);
     });
 
     // Save a room in database
     app.post("/rooms", async (req, res) => {
       const room = req.body;
-      console.log(room);
+      // console.log(room);
       const result = await roomsCollection.insertOne(room);
       res.send(result);
     });
@@ -112,13 +150,14 @@ async function run() {
     // Get bookings for guest
     app.get("/bookings", async (req, res) => {
       const email = req.query.email;
-
       if (!email) {
         res.send([]);
       }
       const query = { "guest.email": email };
+      // console.log("from my bookings", query);
       const result = await bookingsCollection.find(query).toArray();
       res.send(result);
+      // console.log("from managebookings", result);
     });
 
     // Get bookings for host
@@ -128,14 +167,16 @@ async function run() {
         res.send([]);
       }
       const query = { host: email };
+      // console.log("query from manageBookings", query);
       const result = await bookingsCollection.find(query).toArray();
       res.send(result);
+      console.log("from managebookings ", result);
     });
 
     // Save a booking in database
     app.post("/bookings", async (req, res) => {
       const booking = req.body;
-      console.log(booking);
+      // console.log(booking);
       const result = await bookingsCollection.insertOne(booking);
       res.send(result);
     });
