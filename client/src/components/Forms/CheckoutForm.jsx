@@ -1,23 +1,31 @@
-import React, { createContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 // import {loadStripe} from '@stripe/stripe-js';
 import { CardElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import "./CheackoutForm.css";
 import { AuthContext } from "../../providers/AuthProvider";
 import useAxiosSecure from "../../Hooks/useAxiosSecure";
+import { updateStatus } from "../../api/bookings";
+import { toast } from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
+import { ImSpinner9 } from "react-icons/im";
 
 const CheckoutForm = ({ bookingInfo, closeModal }) => {
+  const navigate = useNavigate();
   const stripe = useStripe();
   const elements = useElements();
   const [cardError, setCardError] = useState("");
   const [axiosSecure] = useAxiosSecure();
-  const { user } = createContext(AuthContext);
+  const { user } = useContext(AuthContext);
   const [clientSecret, setClientSecret] = useState("");
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     // adsfasdf
     console.log(bookingInfo.price);
+    console.log(user);
     if (bookingInfo?.price) {
-      axiosSecure.post("/create-payment-intent", { price: bookingInfo?.price })
+      axiosSecure
+        .post("/create-payment-intent", { price: bookingInfo?.price })
         .then((res) => {
           console.log(res.data.clientSecret);
           setClientSecret(res.data.clientSecret);
@@ -50,22 +58,73 @@ const CheckoutForm = ({ bookingInfo, closeModal }) => {
       card,
     });
 
+    // const { error } = await stripe.createPaymentMethod({
+    //   type: "card",
+    //   card,
+    // });
+
     if (error) {
       console.log("[error]", error);
       setCardError(error.message);
     } else {
       console.log("[PaymentMethod]", paymentMethod);
     }
+
+    setProcessing(true);
+    // confirm payment --------  //
+    // const { paymentIntent, error: confirmError } =
+    //   await stripe.confirmCardPayment(clientSecret, {
+    //     payment_method: {
+    //       card: card,
+    //       billing_details: {
+    //         name: user?.displayName || "unknown",
+    //         email: user?.email || "anonymous",
+    //       },
+    //     },
+    //   });
+
     const { paymentIntent, error: confirmError } =
       await stripe.confirmCardPayment(clientSecret, {
         payment_method: {
           card: card,
           billing_details: {
-            name: user?.displayName || "unknown",
             email: user?.email || "anonymous",
+            name: user?.displayName || "anoymous",
           },
         },
       });
+
+    if (confirmError) {
+      console.log("[error]", confirmError);
+      setCardError(confirmError.message);
+    } else {
+      console.log("paymentIntent", paymentIntent);
+      if (paymentIntent.status === "succeeded") {
+        const paymentInfo = {
+          ...bookingInfo,
+          transaction: paymentIntent.id,
+          date: new Date(),
+        };
+
+        axiosSecure.post("/bookings", paymentInfo).then((res) => {
+          console.log(res.data);
+          if (res.data.insertedId) {
+            updateStatus(paymentInfo.roomId, true)
+              .then((data) => {
+                console.log(data);
+                toast.success("Booking Successful!");
+                navigate("/dashboard/my-bookings");
+                setProcessing(false);
+                closeModal();
+              })
+              .catch((err) => {
+                console.log(err);
+                setProcessing(false);
+              });
+          }
+        });
+      }
+    }
   };
 
   return (
@@ -97,12 +156,16 @@ const CheckoutForm = ({ bookingInfo, closeModal }) => {
             Cancel
           </button>
           <button
-            disabled={!stripe}
+            disabled={!stripe || processing}
             type="submit"
             className="inline-flex justify-center rounded-md border border-transparent bg-green-100 px-4 py-2 text-sm font-medium text-green-900 hover:bg-green-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2"
             // onClick={modalHandler}
           >
-            Pay {bookingInfo.price}$
+            {processing ? (
+              <ImSpinner9 className=" animate-spin m-auto size={24}" />
+            ) : (
+              ` Pay ${bookingInfo.price}$`
+            )}
           </button>
         </div>
       </form>
