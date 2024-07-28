@@ -180,6 +180,23 @@ async function run() {
       res.send(result);
     });
 
+    // update rooms data
+    app.put("/rooms/:id", verifyJWT, async (req, res) => {
+      const room = req.body;
+      console.log(room);
+      const filter = { _id: new ObjectId(req.params.id) };
+      const options = { upsert: true };
+      const updateDoc = {
+        $set: room,
+      };
+      const result = await roomsCollection.updateOne(
+        filter,
+        options,
+        updateDoc
+      );
+      res.send(result);
+    });
+
     // update room booking status
     app.patch("/rooms/status/:id", async (req, res) => {
       const id = req.params.id;
