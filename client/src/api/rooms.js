@@ -52,3 +52,31 @@ export const deleteRoom = async (id) => {
   const result = await response.json();
   return result;
 };
+
+// Update Room form
+// export const updateRoom = async (roomData, id) => {
+//   const response = await fetch(`${import.meta.env.VITE_API_URL}/rooms/${id}`, {
+//     method: "PUT",
+//     headers: {
+//       "content-type": "application/json",
+//       authorization: `Bearer ${localStorage.getItem("access-token")}`,
+//     },
+//     body: json.stringify(roomData),
+//   });
+//   const data = response.json();
+//   return data;
+// };
+// update a room
+export const updateRoom = async (roomData, id) => {
+  const response = await fetch(`${import.meta.env.VITE_API_URL}/rooms/${id}`, {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${localStorage.getItem("access-token")}`,
+    },
+    body: JSON.stringify(roomData),
+  });
+
+  const data = await response.json();
+  return data;
+};
