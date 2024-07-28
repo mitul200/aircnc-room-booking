@@ -3,7 +3,9 @@ const app = express();
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
+const nodemailer = require("nodemailer");
 const port = process.env.PORT || 5000;
+const stripe = require("stripe")(process.env.PATMENT_SECRET_KEY);
 
 // middleware
 const corsOptions = {
@@ -48,11 +50,56 @@ const verifyJWT = (req, res, next) => {
 
 // mitul123
 
+const sendMail = (emailData, emailAddress) => {
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL,
+      pass: process.env.PASS,
+    },
+  });
+
+  const mailOptions = {
+    from: process.env.EMAIL,
+    to: emailAddress,
+    subject: emailData.subject,
+    html: `<p>${emailData?.message}</p>`,
+  };
+  transporter.sendMail(mailOptions, function (error, info) {
+    if (error) {
+      console.log(error);
+    } else {
+      console.log("Email sent: " + info.response);
+      // do something useful
+    }
+  });
+};
+
 async function run() {
   try {
     const usersCollection = client.db("aircncDb").collection("users");
     const roomsCollection = client.db("aircncDb").collection("rooms");
     const bookingsCollection = client.db("aircncDb").collection("bookings");
+
+    // Generate client secret
+    app.post("/create-payment-intent", verifyJWT, async (req, res) => {
+      const { price } = req.body;
+      console.log("price for payment=>>>>>>>>>", price);
+      if (price) {
+        const amount = parseFloat(price) * 100;
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amount,
+          currency: "usd",
+          payment_method_types: ["card"],
+        });
+        // const paymentIntent = await stripe.paymentIntents.creat({
+        //   amount: amount,
+        //   currency: "usd",
+        //   payment_method_types: ["card"],
+        // });
+        res.send({ clientSecret: paymentIntent.client_secret });
+      }
+    });
 
     app.post("/jwt", (req, res) => {
       const email = req.body;
@@ -176,8 +223,25 @@ async function run() {
     // Save a booking in database
     app.post("/bookings", async (req, res) => {
       const booking = req.body;
-      // console.log(booking);
+      console.log(booking);
       const result = await bookingsCollection.insertOne(booking);
+      // send confirmation email to guest email account
+      sendMail(
+        {
+          subject: "bookings Successfull",
+          message: `booking id: ${result?.insertedId}, You'r Transaction_Id: ${booking?.transaction}`,
+        },
+        booking?.guest?.email
+      );
+
+      // send confirmation to host email account
+      sendMail(
+        {
+          subject: "Your rooms get booked!",
+          message: `booking id:${result.insertedId}, Transaction_Id: ${booking.transaction}`,
+        },
+        booking?.host
+      );
       res.send(result);
     });
 
